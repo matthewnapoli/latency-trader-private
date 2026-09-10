@@ -31,7 +31,7 @@ class TradingApp:
         self.root = root
         root.title("Latency Trader | Manual AON Orders")
         root.geometry("1050x850")
-        root.minsize(850, 760)
+        root.minsize(850, 650)
         self.busy = False
         self.locked = False
         self.jobs = queue.Queue()
@@ -64,8 +64,15 @@ class TradingApp:
         style.configure("TButton", padding=8, font=("Segoe UI", 10))
         style.configure("TLabelframe", background="#f4f6fa")
         style.configure("TLabelframe.Label", background="#f4f6fa", font=("Segoe UI", 11, "bold"))
-        page = ttk.Frame(root, padding=22)
-        page.pack(fill="both", expand=True)
+        canvas = tk.Canvas(root, highlightthickness=0, background="#f4f6fa")
+        scrollbar = ttk.Scrollbar(root, orient="vertical", command=canvas.yview)
+        scrollbar.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        page = ttk.Frame(canvas, padding=22)
+        window = canvas.create_window((0, 0), window=page, anchor="nw")
+        page.bind("<Configure>", lambda _: canvas.configure(scrollregion=canvas.bbox("all")))
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
         ttk.Label(page, text="Latency Trader", style="Title.TLabel").pack(anchor="w")
         ttk.Label(page, text="Manual orders. Current quotes. All or none.").pack(
             anchor="w", pady=(0, 14)
