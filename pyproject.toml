@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "latency-trader"
-version = "0.1.0"
-description = "Exchange-agnostic prediction-market capture and latency analysis for tennis CV signals"
+version = "0.2.0"
+description = "Local desktop app for manual Kalshi and Polymarket US fill-or-kill limit orders"
 requires-python = ">=3.10"
 dependencies = [
   "cryptography>=43",
@@ -17,6 +17,7 @@ dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.8"]
 
 [project.scripts]
 latency-trader = "latency_trader.cli:main"
+latency-trader-app = "latency_trader.app:main"
 
 [tool.setuptools]
 package-dir = {"" = "python"}

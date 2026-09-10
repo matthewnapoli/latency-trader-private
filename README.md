@@ -1,117 +1,64 @@
-# Latency Trader: prediction-market venue layer
+# Latency Trader
 
-This repository contains the exchange-agnostic market-data, paper-execution, and latency-analysis vertical slice for the tennis CV application. It supports Kalshi and the retail **Polymarket US** API without using or assuming compatibility with Polymarket's international CLOB.
+A local desktop app for easily submitting all-or-none limit orders at the current best bid or best ask on **Kalshi** and **Polymarket US**.
 
-The live surface is read-only. `submitPaperOrder` / `submit_paper_order` only walks the displayed local L2 book; neither adapter contains a live order-submission call.
+Choose an exchange, enter its API credentials, select a market and submarket, choose YES or NO, enter a quantity, and review a buy or sell order.
 
-## Implemented
+- **Buy:** use the latest best ask as the limit price.
+- **Sell:** use the latest best bid as the limit price.
+- **All or none:** submit a native **fill-or-kill (FOK)** limit order. The exchange must fill the entire quantity immediately at the limit or better, or cancel it. This is not a resting AON order.
 
-- Common `PredictionMarketVenue` contract in Swift and Python.
-- Public REST market discovery and book bootstrapping.
-- Authenticated read-only WebSocket subscriptions for books and trades.
-- Kalshi snapshot + incremental-delta maintenance with per-subscription sequence-gap recovery.
-- Polymarket US full-snapshot replacement, JSON heartbeat monitoring, REST rebootstrap, and reconnect. The retail US documentation does not expose a market-feed sequence field, so none is fabricated.
-- Separate exchange and local receive timestamps. Local latency arithmetic uses monotonic nanoseconds.
-- Raw-first JSONL capture plus normalized state records.
-- IOC-style paper fills from displayed depth only.
-- Fuzzy tennis market matching across player names, tournament, start time, event date, and wording. Low-confidence matches cannot reach the cross-venue coordinator without manual confirmation.
-- Simultaneous local-book snapshots on a high-confidence CV signal.
-- Per-venue reaction metrics and an iOS/Markdown cross-venue comparison.
-- Offline raw-message replay through the same normalizers and gap logic used live.
+## Run the app
 
-## Layout
-
-```text
-ios/
-  Markets/
-    PredictionMarketVenue.swift
-    KalshiVenue.swift
-    PolymarketUSVenue.swift
-    MarketNormalizer.swift
-    MarketMatcher.swift
-    CrossVenueLatencyAnalyzer.swift
-    VenueTransport.swift
-  UI/
-    CrossVenueComparisonView.swift
-python/latency_trader/
-  markets/
-  analysis.py
-  replay.py
-tests/
-```
-
-The verified wire contracts and source links are in [docs/MARKET_API_NOTES.md](docs/MARKET_API_NOTES.md).
-
-## Python setup and checks
-
-Python 3.10+ is required.
+Requires Python 3.10+ with Tkinter (included in the standard Windows Python installer).
 
 ```bash
 python -m venv .venv
+# Windows:
+.venv\Scripts\activate
+# macOS / Linux:
+# source .venv/bin/activate
 python -m pip install -e ".[dev]"
+latency-trader-app
+```
+
+Alternatively, after installing: `python -m latency_trader.app`.
+
+On Windows, you can also double-click **Start App.cmd** after setup.
+
+## Use
+
+1. Select **Kalshi** or **Polymarket US**.
+2. Enter your API key ID and signing key: select an RSA PEM file for Kalshi, or paste the base64 API secret for Polymarket US. Credentials are held in process memory and are never saved by the app. Switching exchanges clears them.
+3. Click **Load markets**. Filter the loaded events and use **Load more** for additional pages. Select an event on the left and an open submarket on the right. You can also paste an exact Kalshi market ticker or Polymarket US market slug.
+4. Select **YES / NO** and a whole-number contract quantity.
+5. Click **Review BUY AON at best ask** or **Review SELL AON at best bid**. The app fetches fresh market metadata and order-book prices, then displays the exact contract, direction, limit price, and notional before fees.
+6. Click **Submit live FOK order** within five seconds. Expired quotes require a new review. Submission never silently changes the reviewed price.
+
+These are live orders when you press Submit. Browsing markets and reading quotes do not place orders or require credentials. Quotes can change before arrival at the exchange; FOK does not guarantee a fill. Available balance, positions, fees, trading permissions, market increments, and exchange rules still apply. Kalshi uses a net YES position, so an order can change or reverse that position; this app does not enforce position-only sells.
+
+Results show the exchange-reported order ID, state, and filled quantity. An acknowledgment alone is not displayed as a fill. Requests are never automatically retried. An uncertain submission blocks further orders for the session: check the exchange's order history before restarting the app.
+
+## Current scope
+
+- Local Python/Tkinter desktop app with manual order entry.
+- Kalshi event markets and the retail Polymarket **US** API; not the international Polymarket CLOB.
+- Event/submarket discovery, YES/NO prices, native FOK limit buys and sells.
+- Whole-number quantities; no paired arbitrage execution, continuous auto-trading, or credential storage.
+- API contract tests and public market-data smoke checks. Live order placement has **not** been tested with a funded account.
+
+The existing `ios/` and market replay/analysis modules are earlier research components. They are not the desktop app and do not provide a finished iPhone trading app.
+
+## Possible future versions
+
+Future versions could add computer vision on top of the manual trading app, for example recognizing live sports events and helping surface relevant markets or draft an order ticket. Computer vision is not part of the current app, and no camera signal submits orders.
+
+## Development
+
+```bash
 python -m pytest
 ```
 
-The tests are also standard-library `unittest` compatible:
+The desktop UI is in `python/latency_trader/app.py`; quote handling and live FOK submission are in `python/latency_trader/trading.py`. Existing read-only feed adapters and research utilities remain in `python/latency_trader/markets/`, `ios/`, and the replay/analysis modules.
 
-```bash
-PYTHONPATH=python python -m unittest discover -s tests -v
-```
-
-Replay a raw/normalized JSONL capture:
-
-```bash
-latency-trader summarize data/markets.jsonl
-latency-trader replay data/markets.jsonl
-```
-
-## Credentials
-
-Keep keys outside the repository.
-
-- Kalshi: API key ID plus downloaded RSA private-key PEM. WebSocket signing is RSA-PSS/SHA-256 over `timestamp_ms + METHOD + path_without_query`.
-- Polymarket US: developer key ID plus base64 Ed25519 secret. WebSocket signing is Ed25519 over `timestamp_ms + METHOD + /v1/ws/markets`.
-
-Public market discovery and REST order books do not require credentials. Both venues currently require credentials during the WebSocket handshake.
-
-## Timestamp and recovery rules
-
-Every normalized state carries:
-
-- `exchange_timestamp`: venue time when the venue publishes one;
-- local wall time: for correlating venue and device timelines;
-- local monotonic time: for durations and latency calculations.
-
-Missing venue timestamps remain `nil`/`None`; local receipt time is never relabeled as exchange time.
-
-Kalshi books are marked unsynchronized on any subscription sequence gap. Deltas for that market are ignored until a new WebSocket snapshot arrives via `get_snapshot`. Paper fills fail while a book is stale.
-
-Polymarket US market-data messages are treated as complete snapshots and replace the local book. Reconnect uses a fresh Ed25519 timestamp/signature, REST rebootstrap, then subscription restoration. Server JSON heartbeats and client ping/pong provide liveness detection. Because the official retail US feed does not document a sequence number, gap recovery is snapshot/staleness based.
-
-## Metric definitions
-
-- `signal_latency_ms = cv_detection_timestamp - observable_point_end_timestamp`
-- `pre_event_mid` is the last supplied book at or before the observable point end. If an explicit pre-event book is unavailable, the signal-time snapshot is used and should be labeled as that fallback in the experiment record.
-- `first_repricing_timestamp` is the first local monotonic receive time after CV detection whose mid moves by the configured threshold.
-- `market_reaction_latency_ms = first_repricing_timestamp - observable_point_end_timestamp`
-- `available_size_before_repricing` is displayed best-level size in the paper-order direction.
-- `available_depth` is total displayed depth on the executable side of the normalized YES book.
-- `simulated_pnl` is mark/settlement PnL on filled quantity, before venue fees.
-
-Paper fills do not claim queue priority, hidden liquidity, fee accuracy, or real executability.
-
-## Updated development sequence
-
-1. Dataset/model research and licensing.
-2. Legally usable data normalization and TrackNet baseline.
-3. Ball + court tracking on prerecorded video.
-4. Bounce/hit/point-end detection.
-5. Winner classification and confidence calibration.
-6. Core ML export and device optimization.
-7. Native iPhone real-time inference.
-8. **Kalshi read-only market data and recorder.**
-9. **Polymarket US read-only market data and recorder.**
-10. **Unified paper execution, matching, and cross-venue latency comparison.**
-11. End-to-end device benchmark and optimization.
-
-Each venue must pass auth-vector, normalization, replay, stale-book, and reconnect tests before being enabled in a live capture session.
+API references: [Kalshi order entry](https://docs.kalshi.com/api-reference/orders/create-order-v2), [Polymarket US order entry](https://docs.polymarket.us/api-reference/orders/create-order), and [Polymarket US price conventions](https://docs.polymarket.us/api-reference/orders/overview).

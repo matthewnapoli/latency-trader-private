@@ -57,9 +57,11 @@ Official sources:
 - [Markets WebSocket schemas](https://docs.polymarket.us/api-reference/websocket/markets)
 - [Official Polymarket US Python SDK](https://github.com/Polymarket/polymarket-us-python)
 
-### Order entry (verified, intentionally not called)
+### Order entry
 
-The retail US live order endpoint is `POST https://api.polymarket.us/v1/orders`. It uses the same signed headers. Relevant fields include `marketSlug`, `intent`, `type`, `price`, `quantity`, and `tif`; IOC is `TIME_IN_FORCE_IMMEDIATE_OR_CANCEL`. This v1 implementation does **not** issue this request. Its common venue method is local paper execution only.
+The retail US live order endpoint is `POST https://api.polymarket.us/v1/orders`. The desktop app's `trading.py` now calls it for manually reviewed FOK limit orders (`TIME_IN_FORCE_FILL_OR_KILL`). `price.value` is always the YES-side price, including for NO intents. The original common venue adapters still provide paper execution only. Order entry was rechecked against official documentation on 2026-09-10.
+
+Kalshi manual order entry uses `POST /trade-api/v2/portfolio/events/orders`, `time_in_force: fill_or_kill`, and the V2 YES-book `bid`/`ask` representation. Both venues convert a NO outcome price to `1 - price` before transmission. Quotes expire after five seconds and are never silently repriced. No order is retried automatically.
 
 Official sources:
 
